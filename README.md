@@ -12,7 +12,6 @@ Demonstrations have been provided below for each part. This [Google Drive](https
 
 ---
 
-
 ## Table of Contents
 
 - [Motivation](#motivation)
@@ -21,10 +20,11 @@ Demonstrations have been provided below for each part. This [Google Drive](https
   - [Step 1: Clone the Repository and Set Up the Project Structure](#step-1-clone-the-repository-and-set-up-the-project-structure)
   - [Step 2: Download the OSM File](#step-2-download-the-osm-file)
   - [Step 3: Generate OBJ Files and PCD Files](#step-3-generate-obj-files-and-pcd-files)
-  - [Step 4: Create Lanelet2 Map](#step-4-create-lanelet2-map)
-  - [Step 5: Nullify Latitude/Longitude](#step-5-nullify-latitudelongitude)
-  - [Step 6: Import Files to Autoware](#step-6-import-files-to-autoware)
-  - [Step 7: Import to AWSIM](#step-7-import-to-awsim)
+  - [Step 4: Auto-Generate Lanelet2 Map](#step-4-auto-generate-lanelet2-map)
+  - [Step 5: Refine in Vector Map Builder](#step-5-refine-in-vector-map-builder)
+  - [Step 6: Nullify Latitude/Longitude](#step-6-nullify-latitudelongitude)
+  - [Step 7: Import Files to Autoware](#step-7-import-files-to-autoware)
+  - [Step 8: Import to AWSIM](#step-8-import-to-awsim)
 - [Results](#results)
 - [Localization Instability](#localization-instability)
 - [Limitations](#limitations)
@@ -48,7 +48,6 @@ To address this:
 ---
 
 ## Setup
-Each step is supported with visuals and references to the paper and demo videos.
 
 ### Step 1: Clone the Repository and Set Up the Project Structure
 ```bash
@@ -56,7 +55,6 @@ cd ~/
 git clone https://github.com/zubxxr/AV-Map-Creation-Workflow
 cd AV-Map-Creation-Workflow
 mkdir map_files
-cd map_files
 ```
 
 ### Step 2: Download the OSM File
@@ -67,164 +65,148 @@ Use **OpenStreetMap** to export your desired location as an OSM file.
 
 1. Open [OpenStreetMap](https://www.openstreetmap.org/) and search for the location you want to create a map for.
 
-2. Click **Export** in the top header, then select **Manually select a different area** on the left side.  
-   ![image](https://github.com/user-attachments/assets/f2cce522-7d22-4e11-b32c-a490805a4d1a)
+2. Click **Export** in the top header, then select **Manually select a different area** on the left side.
 
-3. Resize the selection area as needed.  
-   ![image](https://github.com/user-attachments/assets/a0fe3473-11da-4b74-9fa5-31b8ce43e652)
+3. Resize the selection area as needed, then click **Export** to download `map.osm`.
 
-4. Click **Export** on the left side to download the OSM file. A file named `map.osm` will be saved in your **Downloads** folder.
-
-5. Move the `map.osm` file into the directory you created earlier:
+4. Copy the file into the project directory:
    ```bash
-   mv ~/Downloads/map.osm ~/AV-Map-Creation-Workflow/map_files
+   cp ~/Downloads/map.osm ~/AV-Map-Creation-Workflow/map_files/
    ```
 
 ### Step 3: Generate OBJ Files and PCD Files
 
-This step converts your `.osm` file into:
-- A **Point Cloud Data (PCD)** file  
-- A **3D Model**, consisting of `.obj`, `.mtl`, and `.png` texture files
+This step converts your `.osm` file into a **Point Cloud Data (PCD)** file and a **3D Model** (`.obj`, `.mtl`, and texture files).
 
 1. Navigate to your project workspace:
    ```bash
    cd ~/AV-Map-Creation-Workflow
    ```
 
-2. Create an empty `.pcd` file. This prevents the Docker container from mistaking the path for a folder:
+2. Create an empty `.pcd` file. This prevents Docker from mistaking the mount path for a folder:
    ```bash
-   touch ~/AV-Map-Creation-Workflow/map_files/pointcloud_map.pcd
+   touch map_files/pointcloud_map.pcd
    ```
 
-3. Pull the automated Docker container:
+3. Pull the Docker container:
    ```bash
    docker pull zubxxr/osm-3d-pcd-pipeline:latest
    ```
 
-4. Run the Docker container to generate the files:
+4. Run the pipeline:
    ```bash
-   docker run --rm -it -e QT_QPA_PLATFORM=offscreen \
-   -v $(pwd)/map_files/map.osm:/app/map.osm \
-   -v $(pwd)/map_files/3D_Model:/app/3D_Model \
-   -v $(pwd)/map_files/pointcloud_map.pcd:/app/pointcloud_map.pcd \
-   zubxxr/osm-3d-pcd-pipeline /bin/bash
+   docker run --rm -e QT_QPA_PLATFORM=offscreen \
+     -v $(pwd)/map_files/map.osm:/app/map.osm \
+     -v $(pwd)/map_files/3D_Model:/app/3D_Model \
+     -v $(pwd)/map_files/pointcloud_map.pcd:/app/pointcloud_map.pcd \
+     zubxxr/osm-3d-pcd-pipeline
    ```
 
-5. Verify that the output files were generated correctly:
-   ```bash
-   ls ~/AV-Map-Creation-Workflow/map_files
-   ls ~/AV-Map-Creation-Workflow/map_files/3D_Model
-   ```
-   ![image](https://github.com/user-attachments/assets/7c60231d-5045-49b1-abac-2b90151af23a)
+   > **Note for Apple Silicon (M-series) Macs:** The image runs under x86 emulation. If CloudCompare is killed during sampling (OOM), mount a modified `process.sh` with `SAMPLE_MESH DENSITY 10` instead of `100`:
+   > ```bash
+   > docker run --rm -e QT_QPA_PLATFORM=offscreen \
+   >   -v $(pwd)/map_files/map.osm:/app/map.osm \
+   >   -v $(pwd)/map_files/3D_Model:/app/3D_Model \
+   >   -v $(pwd)/map_files/pointcloud_map.pcd:/app/pointcloud_map.pcd \
+   >   -v $(pwd)/process.sh:/app/process.sh \
+   >   zubxxr/osm-3d-pcd-pipeline
+   > ```
+   > Edit `process.sh` and change `DENSITY 100` to `DENSITY 10` before running.
 
-6. Fix file and folder permissions (so you can open/edit them normally):
+5. Verify the output:
    ```bash
-   sudo chown -R $USER:$USER ~/AV-Map-Creation-Workflow/map_files/3D_Model
+   ls map_files/
+   ls map_files/3D_Model/
    ```
 
-### Step 4: Create Lanelet2 Map
+   You should see `pointcloud_map.pcd`, and inside `3D_Model/`: `output.obj`, `output.obj.mtl`, and a `textures/` folder.
+
+### Step 4: Auto-Generate Lanelet2 Map
+
+The included `osm_to_lanelet2.py` script converts the OSM road network directly into a Lanelet2-format map, creating lanelets for all highway ways with correct topology (shared boundary nodes at junctions).
+
+```bash
+cd ~/AV-Map-Creation-Workflow
+python3 osm_to_lanelet2.py map_files/map.osm map_files/raw_lanelet2.osm
+```
+
+This produces `map_files/raw_lanelet2.osm` with:
+- One lanelet per direction for every road
+- Lane widths estimated by road type
+- Speed limits from OSM tags
+- Shared boundary nodes at intersections for correct routing topology
+
+Also create the map projection info file. Find your MGRS grid zone and 100km square using [this converter](https://legallandconverter.com/p50.html) with any lat/lon from your `map.osm`, then create:
+
+**`map_files/map_projector_info.yaml`**
+```yaml
+projector_type: MGRS
+vertical_datum: WGS84
+mgrs_grid: <ZONE><SQUARE>   # e.g. 32TPP
+```
+
+### Step 5: Refine in Vector Map Builder
 
 [Demonstration](https://drive.google.com/file/d/1GsgT-V2fWnFuPw8rWdohsYPsOSAnr716/view?usp=drive_link)
 
-#### Tools Required
-- [Vector Map Builder (VMB)](https://tools.tier4.jp/vector_map_builder_ll2/)
+Use [Vector Map Builder (VMB)](https://tools.tier4.jp/vector_map_builder_ll2/) to inspect and refine the auto-generated map.
 
-This tool is used to draw lanes, parking lots, and traffic markings on top of your point cloud.
+1. Import the PCD as a visual reference: **File > Import PCD > Browse**, select `pointcloud_map.pcd`.
 
-1. Import the `.pcd` file into **Vector Map Builder**:
-   - Go to **File > Import PCD > Browse**, select the point cloud from Step 3, and click **Import**.
-   - You should now see the point cloud in the editor.
-   ![image](https://github.com/user-attachments/assets/3cf18bc9-0763-4ae2-8310-2b37a0e09c35)
+2. Import the auto-generated Lanelet2 map for editing: **File > Import Lanelet2Maps**, select `map_files/raw_lanelet2.osm` along with `map_files/map_projector_info.yaml`.
 
-2. Go to **Create > Create Lanelet2Maps > Change Map Projector Info**, and set the projector type to **MGRS**.
-   ![image](https://github.com/user-attachments/assets/729e6e9a-9230-4633-8315-48a485ce6f42)
-   ![image](https://github.com/user-attachments/assets/3117a53d-9659-477b-b605-fef19873988c)
+3. Review and fix the map:
+   - Delete lanelets for roads not relevant to your use case (footways, irrelevant streets, etc.)
+   - Add parking spaces, stop lines, and any elements not in the OSM data
+   - Connect lanelets at intersections where `next lanelet not set` warnings appear
+   - Adjust lane widths and boundaries to match the point cloud
 
-3. To set the correct location, you’ll need the **Grid Zone** and **100,000-meter square** values.
+   > Make sure the Lanelet2 map is good by exporting it, reimporting it into VMB again, and making sure all the lanelets are correct and not broken. Next, load the map into Autoware PSIM and make sure all areas of the map are routable.
 
-4. Open your `map.osm` file and look for any line containing `lat` and `lon` attributes.
-   ![image](https://github.com/user-attachments/assets/3bfd614d-9a49-4a18-8315-46cc567f6ba6)
+4. Export: **File > Export Lanelet2Maps > OK > Download**
 
-5. Copy any pair of `lat` and `lon` values and paste them into [this MGRS converter](https://legallandconverter.com/p50.html).
-
-6. The values will look something like this:
-   - **Grid Zone**: `17T`
-   - **100,000-meter square**: `PJ`
-     
-   ![image](https://github.com/user-attachments/assets/1b0d9bfb-8625-4a34-be4d-1095b2fdad51)
-   ![image](https://github.com/user-attachments/assets/af45ab5c-ff87-42d4-ab17-ce8668410440)
-
-7. Enter those values into Vector Map Builder, click **Update Map Projector Info**, and confirm the popup.
-   ![image](https://github.com/user-attachments/assets/d78f7a3c-3d72-494e-8f95-dbeb9dc565a0)
-
-8. Begin creating lanelets and any additional map elements such as:
-   - Lanes
-   - Parking spaces
-   - Stop lines
-
-   Resources to help:
-   - [Demonstration Video](https://drive.google.com/file/d/1GsgT-V2fWnFuPw8rWdohsYPsOSAnr716/view?usp=drive_link)
-   - [Official Manual](https://docs.web.auto/en/user-manuals/vector-map-builder/how-to-use)
-   - YouTube tutorials
-
-#### Example map
-![image](https://github.com/user-attachments/assets/a9c2e77c-0f3f-47fd-8a03-29f0ed805781)
-
-
-> Make sure the lanelet2 map is good by exporting it, reimporting it into VMB again, and making sure all the lanelets are correct and not broken. This can happen due to a bug.
-> Next, load the map into Autoware PSIM and make sure all areas of the map are routable. 
-
-9. Export the Lanelet2 map:
-   - Go to **File > Export Lanelet2Maps**
-   - Press **OK** on the popup
-   - Click **Download**
-
-10. Copy the exported `.osm` file into your project directory:
+5. Copy the exported file into the project directory:
    ```bash
    cp ~/Downloads/new_lanelet2_maps.osm ~/AV-Map-Creation-Workflow/map_files/
    ```
 
-### Step 5: Nullify Latitude/Longitude
-- Use the included Python script to avoid infinite map stretching in Autoware:
+### Step 6: Nullify Latitude/Longitude
+
+Run the included script to zero out lat/lon coordinates, which prevents infinite map stretching in Autoware:
+
 ```bash
 cd ~/AV-Map-Creation-Workflow
 python3 remove_lat_lon.py map_files/new_lanelet2_maps.osm map_files/lanelet2_map.osm
 ```
 
-### Step 6: Import Files to Autoware
+### Step 7: Import Files to Autoware
 
 [Demonstration](https://drive.google.com/file/d/1JRt64q4x_NL__mK30LJ7Vgzp1ZBU6C9e/view?usp=drive_link)
 
-#### Tools Required
-- [Autoware](https://www.autoware.org/)
+Your `map_files/` directory should now contain:
 
-After completing the previous steps, your `map_files/` directory should contain the following:
+```
+map_files/
+├── pointcloud_map.pcd
+├── lanelet2_map.osm
+└── map_projector_info.yaml
+```
 
-- **Point Cloud Map**: `pointcloud_map.pcd`  
-- **3D Model Assets**:
-  - `map.obj`  
-  - `map.mtl`  
-  - `textures/` folder containing `.png` images  
-- **Lanelet2 Vector Map**: `lanelet2_map.osm`
-
-These files are now ready to be used with Autoware for simulation or real-world integration.
+Point Autoware to the `map_files/` directory. These files are ready for simulation or real-world integration.
 
 #### Example: Lanelet2 Map and Point Cloud Imported into Autoware
 ![Importing Files into Autoware](https://github.com/user-attachments/assets/760fefa1-7668-4c97-9531-42e42b6a50a9)
 
+### Step 8: Import to AWSIM
 
-### Step 7: Import to AWSIM
-- Import `.obj`, `.mtl`, and `.png` files into Unity scene by dragging them in from the system file manager into the Assets window
-![image](https://github.com/user-attachments/assets/a0dcbb49-7f8d-4c2b-a5b3-bfdb1f031c3a)
-- Drag the obj file into the scene and enable read/write permissions on the file
-![image](https://github.com/user-attachments/assets/46f84474-9e31-475b-bb61-bb28106550cf)
-
-
+- Import `.obj`, `.mtl`, and `.png` files into the Unity scene by dragging them from the system file manager into the Assets window.
+- Drag the `.obj` file into the scene and enable read/write permissions on the mesh.
 - Load and align the Lanelet2 file to synchronize with Autoware. [Instructions](https://autowarefoundation.github.io/AWSIM-Labs/main/Components/Environment/LaneletBoundsVisualizer/)
 
 #### Example: Lanelet2 Map and 3D Model Imported into AWSIM
 ![image](https://github.com/user-attachments/assets/d19eff33-39b4-48cd-9992-01c18400a827)
 > Parking lot and vehicles were added in manually.
+
 ---
 
 ## Results
@@ -242,9 +224,9 @@ These files are now ready to be used with Autoware for simulation or real-world 
 
 ## Localization Instability
 
-In the case of localization instability, the map may need additional features to help localize. This can be done using a 3D mesh editing tool, such as Blender in this case. 
+In the case of localization instability, the map may need additional features to help localize. This can be done using a 3D mesh editing tool, such as Blender.
 
-The 3D mesh was loaded in to Blender after the workflow was used and trimmed to remove the unwanted features.
+The 3D mesh was loaded into Blender after the workflow was used and trimmed to remove unwanted features.
 
 ### Raw 3D Mesh
 ![image](https://github.com/user-attachments/assets/b3e3d646-94dc-447d-96ed-515ec8e7edb4)
@@ -252,17 +234,17 @@ The 3D mesh was loaded in to Blender after the workflow was used and trimmed to 
 ### Trimmed 3D Mesh
 ![image](https://github.com/user-attachments/assets/9616b971-af04-4461-8eb4-871f16bb9b03)
 
-Next, planar, wall-like structures were then added around the perimeter of the map to provide additional geometry for LiDAR scan matching.
+Next, planar, wall-like structures were added around the perimeter of the map to provide additional geometry for LiDAR scan matching.
 
 ### Added Perimeter Walls to Enhance LiDAR Scan Matching
 <img width="1600" height="766" alt="image" src="https://github.com/user-attachments/assets/1e7680d8-c793-4f7a-93c5-c977cf50ab84" />
 
-The 3D mesh can then be exported again, and re-imported into the workflow to generate the PCD file required by Autoware. This simple yet effective adjustment significantly improved localization performance in previously sparse regions of the map.
+The 3D mesh can then be exported again and re-imported into the workflow to generate the PCD file required by Autoware. This simple yet effective adjustment significantly improved localization performance in previously sparse regions of the map.
 
 
 ## Limitations
 
-- **Large OSM maps are not supported:**  
+- **Large OSM maps are not supported:**
   This workflow was designed and tested with relatively small OpenStreetMap (OSM) files. It does not currently scale well to large maps due to memory and processing constraints in the conversion and map-building stages. Attempting to process large `.osm` files may result in performance degradation or failure.
 
 > 📌 _Limitation identified in July 2025._
@@ -275,25 +257,22 @@ Feel free to open an **Issue** if there are any problems.
 ### Entering the Container
 To manually enter the container for debugging:
 ```bash
-xhost +
-docker run -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix -v $(pwd)/map_files/map.osm:/app/map.osm --entrypoint bash -it zubxxr/osm-3d-pcd-pipeline
+docker run -e QT_QPA_PLATFORM=offscreen \
+  -v $(pwd)/map_files/map.osm:/app/map.osm \
+  --entrypoint bash -it zubxxr/osm-3d-pcd-pipeline
 ```
+
 ---
 
 
 ## Publication and Recognition
 
 This repository supports the paper:
-> **Zubair Islam**, Ahmaad Ansari, George Daoud, Mohamed El-Darieby  
-> *A Workflow for Map Creation in Autonomous Vehicle Simulations*  
-> **GEOProcessing 2025** — Awarded **Best Paper**  
+> **Zubair Islam**, Ahmaad Ansari, George Daoud, Mohamed El-Darieby
+> *A Workflow for Map Creation in Autonomous Vehicle Simulations*
+> **GEOProcessing 2025** — Awarded **Best Paper**
 > [Read the full paper](https://www.thinkmind.org/library/GEOProcessing/GEOProcessing_2025/geoprocessing_2025_2_40_30041.html)
 
 <p align="left">
   <img src="https://github.com/user-attachments/assets/8dc4020f-a378-4de7-b9d7-facc86c5a187" alt="Best Paper Award – GEOProcessing 2025" width="400"/>
 </p>
-
-
-
-
-
